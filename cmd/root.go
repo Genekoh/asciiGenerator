@@ -4,15 +4,16 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"github.com/gabriel-vasile/mimetype"
-	"github.com/nfnt/resize"
-	"github.com/spf13/cobra"
 	"image"
 	"image/color"
 	_ "image/jpeg"
 	_ "image/png"
 	"os"
 	"reflect"
+
+	"github.com/gabriel-vasile/mimetype"
+	"github.com/nfnt/resize"
+	"github.com/spf13/cobra"
 )
 
 var (
@@ -42,7 +43,6 @@ func getImage(file *os.File) (image.Image, error) {
 		err = errors.New("unable to seek file")
 		return nil, err
 	}
-
 	img, _, err := image.Decode(file)
 	if err != nil {
 		err = errors.New("unable to decode image")
@@ -69,8 +69,9 @@ func getImageDimensions(file *os.File) (w uint, h uint, e error) {
 }
 
 func resizeImage(image image.Image, width, height, newWidth uint) (image.Image, uint) {
-	ratio := height / width
-	newHeight := ratio * newWidth
+	ratio := float64(height) / float64(width)
+	newWidthFloat := float64(newWidth)
+	newHeight := uint(ratio * newWidthFloat)
 
 	resizedImage := resize.Resize(newWidth, newHeight, image, resize.Bicubic)
 
@@ -83,14 +84,14 @@ func generateAscii(img image.Image, w, h int) string {
 		for x := 0; x < w; x++ {
 			p := color.GrayModel.Convert(img.At(x, y))
 			brightness := reflect.ValueOf(p).FieldByName("Y").Uint()
-			length := uint64(len(asciiCharacters))
+			length := uint64(len(asciiCharacters) - 1)
 			index := int(brightness * length / 255)
 			buffer.WriteByte(asciiTable[index])
 		}
 		buffer.WriteByte('\n')
 	}
 
-	return string(buffer.Bytes())
+	return buffer.String()
 }
 
 func output(file *os.File, newWidth uint) error {
@@ -113,7 +114,6 @@ func output(file *os.File, newWidth uint) error {
 		finalWidth = w
 		finalHeight = h
 	}
-
 	asciiImage := generateAscii(img, int(finalWidth), int(finalHeight))
 	fmt.Println(asciiImage)
 	return nil
@@ -128,6 +128,7 @@ func command(path string, width uint) {
 
 	file, err := os.Open(path)
 	if err != nil {
+		fmt.Println(err)
 		fmt.Println("Unable to open file")
 		os.Exit(1)
 	}
