@@ -14,7 +14,7 @@ var (
 )
 
 // GenerateAscii takes in an image
-func GenerateAscii(img image.Image) string {
+func GenerateAscii(img image.Image) *bytes.Buffer {
 	uintW, uintH := imagePkg.GetImageDimensions(img)
 	w := uintW
 	h := uintH
@@ -24,7 +24,7 @@ func GenerateAscii(img image.Image) string {
 	i := imagePkg.ResizeImage(img, w, h)
 
 	buffer := WriteAsciiBytes(i, int(w), int(h))
-	return buffer.String()
+	return buffer
 }
 
 // WriteAsciiBytes returns a *bytes.Buffer of asciiCharacters that represents the brightness of each pixel of the image.Image given
