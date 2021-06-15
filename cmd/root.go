@@ -1,28 +1,19 @@
 package cmd
 
 import (
-	"bytes"
-	"errors"
 	"fmt"
-	"image"
-	"image/color"
-	_ "image/jpeg"
-	_ "image/png"
-	"os"
-	"reflect"
-
+	"github.com/Genekoh/asciiGenerator/pkg/ascii"
+	"github.com/Genekoh/asciiGenerator/pkg/image"
 	"github.com/gabriel-vasile/mimetype"
-	"github.com/nfnt/resize"
 	"github.com/spf13/cobra"
+	"os"
 )
 
 var (
 	path  string
 	width uint
 
-	asciiCharacters = "MN8@O$Zbe*+!:.,  "
-	asciiTable      = []byte(asciiCharacters)
-	rootCmd         = &cobra.Command{
+	rootCmd = &cobra.Command{
 		Use:   "asciiGenerator",
 		Short: "Video To Ascii Convertor",
 		Long:  "A CLI that can create ASCII from videos",
@@ -37,84 +28,17 @@ func init() {
 	rootCmd.Flags().UintVarP(&width, "width", "w", 0, "Width of the ascii file")
 }
 
-func getImage(file *os.File) (image.Image, error) {
-	_, err := file.Seek(0, 0)
-	if err != nil {
-		err = errors.New("unable to seek file")
-		return nil, err
-	}
-	img, _, err := image.Decode(file)
-	if err != nil {
-		err = errors.New("unable to decode image")
-		return nil, err
-	}
-
-	return img, nil
-}
-
-func getImageDimensions(file *os.File) (w uint, h uint, e error) {
-	_, err := file.Seek(0, 0)
-	if err != nil {
-		err = errors.New("unable to seek file")
-		return 0, 0, err
-	}
-
-	config, _, err := image.DecodeConfig(file)
-	if err != nil {
-		err = errors.New("unable to decode image config")
-		return 0, 0, err
-	}
-
-	return uint(config.Width), uint(config.Height), nil
-}
-
-func resizeImage(image image.Image, width, height, newWidth uint) (image.Image, uint) {
-	ratio := float64(height) / float64(width)
-	newWidthFloat := float64(newWidth)
-	newHeight := uint(ratio * newWidthFloat)
-
-	resizedImage := resize.Resize(newWidth, newHeight, image, resize.Bicubic)
-
-	return resizedImage, newHeight
-}
-
-func generateAscii(img image.Image, w, h int) string {
-	buffer := new(bytes.Buffer)
-	for y := 0; y < h; y++ {
-		for x := 0; x < w; x++ {
-			p := color.GrayModel.Convert(img.At(x, y))
-			brightness := reflect.ValueOf(p).FieldByName("Y").Uint()
-			length := uint64(len(asciiCharacters) - 1)
-			index := int(brightness * length / 255)
-			buffer.WriteByte(asciiTable[index])
-		}
-		buffer.WriteByte('\n')
-	}
-
-	return buffer.String()
-}
-
 func output(file *os.File, newWidth uint) error {
-	var finalWidth, finalHeight uint
-	img, err := getImage(file)
-	if err != nil {
-		return err
-	}
-	w, h, err := getImageDimensions(file)
+	img, err := image.GetImage(file)
 	if err != nil {
 		return err
 	}
 
 	if newWidth != 0 {
-		i, newHeight := resizeImage(img, w, h, newWidth)
-		img = i
-		finalWidth = newWidth
-		finalHeight = newHeight
-	} else {
-		finalWidth = w
-		finalHeight = h
+		img, _ = image.ResizeImageAspect(img, newWidth)
 	}
-	asciiImage := generateAscii(img, int(finalWidth), int(finalHeight))
+
+	asciiImage := ascii.GenerateAscii(img)
 	fmt.Println(asciiImage)
 	return nil
 }
