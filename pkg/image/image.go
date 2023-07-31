@@ -1,53 +1,57 @@
-package image
+package imagePkg
 
 import (
-	"errors"
-	"github.com/nfnt/resize"
 	"image"
+	"image/gif"
 	_ "image/jpeg"
 	_ "image/png"
 	"os"
+
+	"github.com/nfnt/resize"
 )
 
 // GetImage opens a file and parses it, returning an image.Image
 func GetImage(file *os.File) (image.Image, error) {
 	_, err := file.Seek(0, 0)
 	if err != nil {
-		err = errors.New("unable to seek file")
 		return nil, err
 	}
+
 	img, _, err := image.Decode(file)
 	if err != nil {
-		err = errors.New("unable to decode image")
 		return nil, err
 	}
 
 	return img, nil
 }
 
-func GetImageDimensions(img image.Image) (w, h uint) {
-	size := img.Bounds().Size()
-	width := uint(size.X)
-	height := uint(size.Y)
-
-	return width, height
-}
-
-// GetImageDimensionsFromFile opens a files and returns its width and height
-func GetImageFileDimensions(file *os.File) (w, h uint, e error) {
+func GetGif(file *os.File) (*gif.GIF, error) {
 	_, err := file.Seek(0, 0)
 	if err != nil {
-		err = errors.New("unable to seek file")
-		return 0, 0, err
+		return nil, err
 	}
 
-	config, _, err := image.DecodeConfig(file)
+	gifPtr, err := gif.DecodeAll(file)
 	if err != nil {
-		err = errors.New("unable to decode image config")
-		return 0, 0, err
+		return nil, err
 	}
 
-	return uint(config.Width), uint(config.Height), nil
+	return gifPtr, nil
+}
+
+func GetImageDimensions(img image.Image) (w, h uint) {
+	size := img.Bounds().Size()
+	w = uint(size.X)
+	h = uint(size.Y)
+
+	return w, h
+}
+
+func GetImageDimensionsInt(img image.Image) (w, h int) {
+	uw, uh := GetImageDimensions(img)
+	w, h = int(uw), int(uh)
+
+	return w, h
 }
 
 // ResizeImageAspect receives an image.Image and returns resized image with the newWidth and keeping its aspect ratio
