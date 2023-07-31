@@ -1,14 +1,17 @@
 package cmd
 
 import (
-	"bytes"
+	"encoding/json"
 	"fmt"
-	"github.com/Genekoh/asciiGenerator/pkg/ascii"
-	"github.com/Genekoh/asciiGenerator/pkg/image"
-	"github.com/gabriel-vasile/mimetype"
-	"github.com/spf13/cobra"
+	"image"
 	"os"
 	"strings"
+	"time"
+
+	"github.com/Genekoh/asciiGenerator/pkg/ascii"
+	imagePkg "github.com/Genekoh/asciiGenerator/pkg/image"
+	"github.com/gabriel-vasile/mimetype"
+	"github.com/spf13/cobra"
 )
 
 var (
@@ -17,8 +20,8 @@ var (
 
 	rootCmd = &cobra.Command{
 		Use:   "asciiGenerator",
-		Short: "Video To Ascii Convertor",
-		Long:  "A CLI that can create ASCII from videos",
+		Short: "Converts an image to ASCII",
+		Long:  "A CLI that can create ASCII from images",
 		Run: func(cmd *cobra.Command, args []string) {
 			command(path, width, output)
 		},
@@ -31,21 +34,6 @@ func init() {
 	rootCmd.Flags().StringVarP(&output, "output", "o", "", "Path to output file")
 }
 
-func outputAscii(file *os.File, newWidth uint) (*bytes.Buffer, error) {
-	img, err := image.GetImage(file)
-	if err != nil {
-		return new(bytes.Buffer), err
-	}
-
-	if newWidth != 0 {
-		img, _ = image.ResizeImageAspect(img, newWidth)
-	}
-
-	asciiBuffer := ascii.GenerateAscii(img)
-	fmt.Println(asciiBuffer.String())
-	return asciiBuffer, nil
-}
-
 func command(path string, width uint, output string) {
 	mime, err := mimetype.DetectFile(path)
 	if err != nil {
@@ -54,6 +42,7 @@ func command(path string, width uint, output string) {
 	}
 
 	file, err := os.Open(path)
+	defer file.Close()
 	if err != nil {
 		fmt.Println(err)
 		fmt.Println("Unable to open file")
@@ -62,21 +51,77 @@ func command(path string, width uint, output string) {
 
 	switch extension := mime.Extension(); extension {
 	case ".jpg", ".jpeg", ".png":
-		buf, err := outputAscii(file, width)
+		img, err := imagePkg.GetImage(file)
 		if err != nil {
 			fmt.Println(err)
 			os.Exit(1)
-		}
-		if strings.TrimSpace(output) == "" {
-			break
 		}
 
-		err = os.WriteFile(output, buf.Bytes(), 0666)
+		if width != 0 {
+			img, _ = imagePkg.ResizeImageAspect(img, width)
+		}
+		buf := ascii.GenerateAscii(img)
+
+		// output ascii to terminal if no output is defined
+		if strings.TrimSpace(output) == "" {
+			fmt.Println(buf.String())
+		} else {
+			err = os.WriteFile(output, buf.Bytes(), 0666)
+			if err != nil {
+				fmt.Println(err)
+				os.Exit(1)
+			}
+		}
+
+	case ".gif":
+		gif, err := imagePkg.GetGif(file)
 		if err != nil {
 			fmt.Println(err)
 			os.Exit(1)
 		}
-		break
+
+		var asciiStrings []string
+		var imgs []image.Image
+		for i := 0; i < len(gif.Image); i++ {
+			var img image.Image = gif.Image[i]
+			if width != 0 {
+				img, _ = imagePkg.ResizeImageAspect(gif.Image[i], width)
+			}
+
+			buf := ascii.GenerateAscii(img)
+			asciiStrings = append(asciiStrings, buf.String())
+			imgs = append(imgs, img)
+		}
+
+		// output ascii to terminal if no output is defined
+		if strings.TrimSpace(output) == "" {
+			for i := 0; i <= 20; i++ {
+				for j, img := range imgs {
+					if i != 0 || j != 0 {
+						h := uint(float64(img.Bounds().Dy()) * ascii.CorrectionRatio)
+						fmt.Printf("\x1b[%dF", h)
+					}
+
+					fmt.Print(asciiStrings[j])
+					time.Sleep(time.Duration(gif.Delay[j]) * 10 * time.Millisecond)
+				}
+			}
+		} else {
+			if !strings.HasSuffix(output, ".json") {
+				output += ".json"
+			}
+
+			file, err := os.Create(output)
+			defer file.Close()
+			if err != nil {
+				fmt.Println(err)
+				os.Exit(1)
+			}
+
+			encoder := json.NewEncoder(file)
+			c := ascii.NewStoredAscii(asciiStrings, gif.Delay)
+			encoder.Encode(c)
+		}
 
 	default:
 		fmt.Println("Not a supported file type")
