@@ -8,6 +8,7 @@ import (
 	"os"
 
 	"github.com/nfnt/resize"
+	_ "golang.org/x/image/webp"
 )
 
 // GetImage opens a file and parses it, returning an image.Image

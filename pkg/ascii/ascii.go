@@ -10,8 +10,8 @@ import (
 )
 
 const (
-	CharacterSet = "MN8@O$Zbe*+!:.,  "
-	//CharacterSet            = "$@B%8&WM#*oahkbdpqwmZO0QLCJUYXzcvunxrjft/\\|()1{}[]?-_+~<>i!lI;:,\"^`'. "
+	// CharacterSet = "MN8@O$Zbe*+!:.,  "
+	CharacterSet            = "$@B%8&WM#*oahkbdpqwmZO0QLCJUYXzcvunxrjft/\\|()1{}[]?-_+~<>i!lI;:,\"^`'. "
 	CorrectionRatio float64 = 10.0 / 22.0
 )
 
@@ -20,10 +20,11 @@ var Table = []byte(CharacterSet)
 type StoredAscii struct {
 	Frames []string
 	Delay  []int
+	Height uint
 }
 
-func NewStoredAscii(frames []string, delay []int) *StoredAscii {
-	return &StoredAscii{frames, delay}
+func NewStoredAscii(frames []string, delay []int, height uint) *StoredAscii {
+	return &StoredAscii{frames, delay, height}
 }
 
 // GenerateAscii takes in an image, resizes it to maintain image aspect ratio and returns a *bytes.Buffer of asciiCharacters
