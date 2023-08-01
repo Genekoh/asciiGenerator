@@ -5,6 +5,7 @@ import (
 	"image/color"
 	"reflect"
 	"strings"
+	"sync"
 
 	"github.com/Genekoh/asciiGenerator/pkg/utils"
 )
@@ -39,22 +40,31 @@ func convertToAscii(img image.Image, charSet string, inverted bool) *[]string {
 	w, h := img.Bounds().Dx(), img.Bounds().Dy()
 	xs := make([]string, h)
 
+	var wg sync.WaitGroup
 	for y := range xs {
-		// should add go routines, waitgroup, mutex? per row
-		row := ""
-		for x := 0; x < w; x++ {
-			gray_pixel := color.GrayModel.Convert(img.At(x, y))
-			brightness := reflect.ValueOf(gray_pixel).FieldByName("Y").Uint()
-			if inverted {
-				brightness = 256 - brightness
-			}
+		wg.Add(1)
+		// convert each row using different goroutines
+		go func(index int) {
+			defer wg.Done()
+			row := ""
+			for x := 0; x < w; x++ {
+				// get brightness of pixel
+				gray_pixel := color.GrayModel.Convert(img.At(x, index))
+				brightness := reflect.ValueOf(gray_pixel).FieldByName("Y").Uint()
+				if inverted {
+					brightness = 256 - brightness
+				}
 
-			l := uint64(len(charSet) - 1)
-			char_index := uint(brightness * l / 255)
-			row += string(charSet[char_index])
-		}
-		xs[y] = row
+				// convert brightness of pixel to position in the character set
+				l := uint64(len(charSet) - 1)
+				char_index := uint(brightness * l / 255)
+				row += string(charSet[char_index])
+			}
+			xs[index] = row
+		}(y)
 	}
+
+	wg.Wait()
 
 	return &xs
 }

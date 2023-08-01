@@ -9,6 +9,7 @@ import (
 	_ "image/png"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Genekoh/asciiGenerator/pkg/ascii"
@@ -99,17 +100,24 @@ func command(path, output, charSet string, width uint, inverted, read bool) {
 
 			frames := make([]ascii.Frame, len(g.Image))
 			// convert each gif image to a Frame object
+			var wg sync.WaitGroup
 			for i, x := range g.Image {
-				// optimize to use go routines!!!
-				var img image.Image
-				if width != 0 {
-					img = utils.ResizeImageAspect(x, width)
-				} else {
-					img = x
-				}
+				wg.Add(1)
+				// each gif image frame generation is done in separate goroutines
+				go func(i int, x *image.Paletted) {
+					defer wg.Done()
+					var img image.Image
+					if width != 0 {
+						img = utils.ResizeImageAspect(x, width)
+					} else {
+						img = x
+					}
 
-				frames[i] = ascii.GenerateAscii(img, charSet, inverted, g.Delay[i])
+					frames[i] = ascii.GenerateAscii(img, charSet, inverted, g.Delay[i])
+				}(i, x)
+
 			}
+			wg.Wait()
 
 			// output ascii gif to terminal if no output is defined
 			if strings.TrimSpace(output) == "" {
