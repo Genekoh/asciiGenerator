@@ -4,27 +4,30 @@ import (
 	"encoding/json"
 	"fmt"
 	"image"
+	"image/gif"
+	_ "image/jpeg"
+	_ "image/png"
 	"os"
 	"strings"
 	"time"
 
 	"github.com/Genekoh/asciiGenerator/pkg/ascii"
-	imagePkg "github.com/Genekoh/asciiGenerator/pkg/image"
-	"github.com/gabriel-vasile/mimetype"
+	"github.com/Genekoh/asciiGenerator/pkg/utils"
 	"github.com/spf13/cobra"
+	_ "golang.org/x/image/webp"
 )
 
 var (
-	path, output string
-	width        uint
-	read         bool
+	path, output, charSet string
+	width                 uint
+	inverted, read        bool
 
 	rootCmd = &cobra.Command{
 		Use:   "asciiGenerator",
 		Short: "Converts an image to ASCII",
 		Long:  "A CLI that can create ASCII from images",
 		Run: func(cmd *cobra.Command, args []string) {
-			command(path, width, output, read)
+			command(path, output, charSet, width, inverted, read)
 		},
 	}
 )
@@ -33,16 +36,12 @@ func init() {
 	rootCmd.Flags().StringVarP(&path, "path", "p", "", "Path to image to be converted to ASCII")
 	rootCmd.Flags().UintVarP(&width, "width", "w", 0, "Width of the ascii file")
 	rootCmd.Flags().StringVarP(&output, "output", "o", "", "Path to output file")
+	rootCmd.Flags().StringVarP(&charSet, "char", "c", ascii.DefaultCharSet, "The character set for ")
+	rootCmd.Flags().BoolVarP(&inverted, "inverted", "i", false, "Determines whether ascii is inverted or not")
 	rootCmd.Flags().BoolVarP(&read, "read", "r", false, "Determines whether cli converts image to ascii or reads from existing ascii file")
 }
 
-func command(path string, width uint, output string, read bool) {
-	mime, err := mimetype.DetectFile(path)
-	if err != nil {
-		fmt.Println("Unable to find file")
-		os.Exit(1)
-	}
-
+func command(path, output, charSet string, width uint, inverted, read bool) {
 	file, err := os.Open(path)
 	defer file.Close()
 	if err != nil {
@@ -52,69 +51,26 @@ func command(path string, width uint, output string, read bool) {
 	}
 
 	if !read {
-		switch extension := mime.Extension(); extension {
-		case ".jpg", ".jpeg", ".png", ".webp":
-			img, err := imagePkg.GetImage(file)
-			if err != nil {
-				fmt.Println(err)
-				os.Exit(1)
-			}
+		img, ext, err := image.Decode(file)
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
 
+		switch ext {
+		case "jpeg", "png", "webp":
 			if width != 0 {
-				img, _ = imagePkg.ResizeImageAspect(img, width)
+				img = utils.ResizeImageAspect(img, width)
 			}
-			buf := ascii.GenerateAscii(img)
 
-			// output ascii to terminal if no output is defined
+			frame := ascii.GenerateAscii(img, charSet, inverted, 0)
+
+			// output asciiString to terminal if no output is defined
 			if strings.TrimSpace(output) == "" {
-				fmt.Println(buf.String())
+				fmt.Println(frame.AsciiString)
 			} else {
-				err = os.WriteFile(output, buf.Bytes(), 0666)
-				if err != nil {
-					fmt.Println(err)
-					os.Exit(1)
-				}
-			}
-
-		case ".gif":
-			gif, err := imagePkg.GetGif(file)
-			if err != nil {
-				fmt.Println(err)
-				os.Exit(1)
-			}
-
-			var asciiStrings []string
-			var imgs []image.Image
-			for i := 0; i < len(gif.Image); i++ {
-				var img image.Image = gif.Image[i]
-				if width != 0 {
-					img, _ = imagePkg.ResizeImageAspect(gif.Image[i], width)
-				}
-
-				buf := ascii.GenerateAscii(img)
-				asciiStrings = append(asciiStrings, buf.String())
-				imgs = append(imgs, img)
-			}
-
-			// output ascii to terminal if no output is defined
-			if strings.TrimSpace(output) == "" {
-				for i := 0; i <= 20; i++ {
-					for j, img := range imgs {
-						if i != 0 || j != 0 {
-							h := uint(float64(img.Bounds().Dy()) * ascii.CorrectionRatio)
-							fmt.Printf("\x1b[%dF", h)
-						}
-
-						fmt.Print(asciiStrings[j])
-						time.Sleep(time.Duration(gif.Delay[j]) * 10 * time.Millisecond)
-					}
-				}
-			} else {
-				if !strings.HasSuffix(output, ".json") {
-					output += ".json"
-				}
-
-				content := ascii.NewStoredAscii(asciiStrings, gif.Delay, uint(imgs[0].Bounds().Dy()))
+				// else encode content to json and store to output file
+				content := ascii.NewStoredContent([]ascii.Frame{frame}, -1)
 				json_content, err := json.Marshal(content)
 				if err != nil {
 					fmt.Println(err)
@@ -128,13 +84,74 @@ func command(path string, width uint, output string, read bool) {
 				}
 			}
 
+		case "gif":
+			_, err := file.Seek(0, 0)
+			if err != nil {
+				fmt.Println(err)
+				os.Exit(1)
+			}
+
+			g, err := gif.DecodeAll(file)
+			if err != nil {
+				fmt.Println(err)
+				os.Exit(1)
+			}
+
+			frames := make([]ascii.Frame, len(g.Image))
+			// convert each gif image to a Frame object
+			for i, x := range g.Image {
+				// optimize to use go routines!!!
+				var img image.Image
+				if width != 0 {
+					img = utils.ResizeImageAspect(x, width)
+				} else {
+					img = x
+				}
+
+				frames[i] = ascii.GenerateAscii(img, charSet, inverted, g.Delay[i])
+			}
+
+			// output ascii gif to terminal if no output is defined
+			if strings.TrimSpace(output) == "" {
+				n := g.LoopCount + 1
+				if g.LoopCount == 0 {
+					n = 900 // should be infinite??
+				} else if g.LoopCount == -1 {
+					n = 1
+				}
+
+				for i := 0; i < n; i++ {
+					for j, f := range frames {
+						if i != 0 || j != 0 {
+							fmt.Printf("\x1b[%dF", f.Height-1)
+						}
+
+						fmt.Print(f.AsciiString)
+						time.Sleep(time.Duration(g.Delay[j]) * 10 * time.Millisecond)
+					}
+					i++
+				}
+			} else {
+				// else encode content to json and store to output file
+				content := ascii.NewStoredContent(frames, g.LoopCount)
+				json_content, err := json.Marshal(content)
+				if err != nil {
+					fmt.Println(err)
+					os.Exit(1)
+				}
+
+				err = os.WriteFile(output, json_content, 0666)
+				if err != nil {
+					fmt.Println(err)
+					os.Exit(1)
+				}
+			}
 		default:
-			fmt.Println("extension:\t", extension)
-			fmt.Println("Not a supported file type")
-			os.Exit(1)
+			fmt.Printf("%s is not a supported file type", ext)
+			// os.Exit(1)
 		}
 	} else {
-		var content ascii.StoredAscii
+		var content ascii.StoredContent
 		decoder := json.NewDecoder(file)
 		err := decoder.Decode(&content)
 		if err != nil {
@@ -142,15 +159,21 @@ func command(path string, width uint, output string, read bool) {
 			os.Exit(1)
 		}
 
-		for i := 0; i < 20; i++ {
-			for j, img := range content.Frames {
+		n := content.LoopCount + 1
+		if content.LoopCount == 0 {
+			n = 900 // should be infinite??
+		} else if content.LoopCount == -1 {
+			n = 1
+		}
+
+		for i := 0; i < n; i++ {
+			for j, f := range content.Frames {
 				if i != 0 || j != 0 {
-					h := uint(float64(content.Height) * ascii.CorrectionRatio)
-					fmt.Printf("\x1b[%dF", h)
+					fmt.Printf("\x1b[%dF", f.Height-1)
 				}
 
-				fmt.Print(img)
-				time.Sleep(time.Duration(content.Delay[j]) * 10 * time.Millisecond)
+				fmt.Print(f.AsciiString)
+				time.Sleep(time.Duration(f.Delay) * 10 * time.Millisecond)
 			}
 		}
 	}

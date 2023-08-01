@@ -1,59 +1,71 @@
 package ascii
 
 import (
-	"bytes"
 	"image"
 	"image/color"
 	"reflect"
+	"strings"
 
-	imagePkg "github.com/Genekoh/asciiGenerator/pkg/image"
+	"github.com/Genekoh/asciiGenerator/pkg/utils"
 )
 
 const (
-	// CharacterSet = "MN8@O$Zbe*+!:.,  "
-	CharacterSet            = "$@B%8&WM#*oahkbdpqwmZO0QLCJUYXzcvunxrjft/\\|()1{}[]?-_+~<>i!lI;:,\"^`'. "
+	// DefaultCharSet = "$@B%8&WM#*oahkbdpqwmZO0QLCJUYXzcvunxrjft/\\|()1{}[]?-_+~<>i!lI;:,\"^`'. "
+	DefaultCharSet          = "MN8@O$Zbe*+!:.,  "
 	CorrectionRatio float64 = 10.0 / 22.0
 )
 
-var Table = []byte(CharacterSet)
-
-type StoredAscii struct {
-	Frames []string
-	Delay  []int
-	Height uint
+type Frame struct {
+	AsciiString string
+	Delay       int
+	Width       uint
+	Height      uint
 }
 
-func NewStoredAscii(frames []string, delay []int, height uint) *StoredAscii {
-	return &StoredAscii{frames, delay, height}
+type StoredContent struct {
+	Frames    []Frame
+	LoopCount int
 }
 
-// GenerateAscii takes in an image, resizes it to maintain image aspect ratio and returns a *bytes.Buffer of asciiCharacters
-func GenerateAscii(img image.Image) *bytes.Buffer {
-	w, h := imagePkg.GetImageDimensions(img)
-	h = uint(CorrectionRatio * float64(h)) // CharacterSet in terminal aren't equally tall as it is wide
-
-	resizedImg := imagePkg.ResizeImage(img, w, h)
-
-	buffer := writeAsciiBytes(resizedImg)
-	return buffer
+func NewFrame(asciiString string, delay int, width, height uint) Frame {
+	return Frame{asciiString, delay, width, height}
 }
 
-// writeAsciiBytes returns a *bytes.Buffer of asciiCharacters that represents the brightness of each pixel of the image.Image given
-func writeAsciiBytes(img image.Image) *bytes.Buffer {
-	buffer := new(bytes.Buffer)
+func NewStoredContent(frames []Frame, loopCount int) *StoredContent {
+	return &StoredContent{frames, loopCount}
+}
 
-	w, h := imagePkg.GetImageDimensionsInt(img)
+func convertToAscii(img image.Image, charSet string, inverted bool) *[]string {
+	w, h := img.Bounds().Dx(), img.Bounds().Dy()
+	xs := make([]string, h)
 
-	for y := 0; y < h; y++ {
+	for y := range xs {
+		// should add go routines, waitgroup, mutex? per row
+		row := ""
 		for x := 0; x < w; x++ {
-			p := color.GrayModel.Convert(img.At(x, y))
-			brightness := reflect.ValueOf(p).FieldByName("Y").Uint()
-			length := uint64(len(CharacterSet) - 1)
-			index := int(brightness * length / 255)
-			buffer.WriteByte(Table[index])
+			gray_pixel := color.GrayModel.Convert(img.At(x, y))
+			brightness := reflect.ValueOf(gray_pixel).FieldByName("Y").Uint()
+			if inverted {
+				brightness = 256 - brightness
+			}
+
+			l := uint64(len(charSet) - 1)
+			char_index := uint(brightness * l / 255)
+			row += string(charSet[char_index])
 		}
-		buffer.WriteByte('\n')
+		xs[y] = row
 	}
 
-	return buffer
+	return &xs
+}
+
+func GenerateAscii(img image.Image, charSet string, inverted bool, delay int) Frame {
+	w, h := uint(img.Bounds().Dx()), uint(img.Bounds().Dy())
+	h = uint(CorrectionRatio * float64(h))
+
+	resizedImg := utils.ResizeImage(img, w, h)
+	xs := convertToAscii(resizedImg, charSet, inverted)
+	asciiString := strings.Join(*xs, "\n")
+
+	return NewFrame(asciiString, delay, w, h)
 }
