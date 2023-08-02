@@ -6,4 +6,4 @@
 - [x] add flag for customizing character sets
 - [x] inverted colors
 - [ ] refactor the display of each ascii to make less copy pasty code
-- [ ] README.md documentation
+- [x] README.md documentation
