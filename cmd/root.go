@@ -37,7 +37,7 @@ func init() {
 	rootCmd.Flags().StringVarP(&path, "path", "p", "", "Path to image to be converted to ASCII")
 	rootCmd.Flags().UintVarP(&width, "width", "w", 0, "Width of the ascii file")
 	rootCmd.Flags().StringVarP(&output, "output", "o", "", "Path to output file")
-	rootCmd.Flags().StringVarP(&charSet, "char", "c", ascii.DefaultCharSet, "The character set for ")
+	rootCmd.Flags().StringVarP(&charSet, "char", "c", ascii.DefaultCharSet, "The character set used for the ASCII art")
 	rootCmd.Flags().BoolVarP(&inverted, "inverted", "i", false, "Determines whether ascii is inverted or not")
 	rootCmd.Flags().BoolVarP(&read, "read", "r", false, "Determines whether cli converts image to ascii or reads from existing ascii file")
 }
@@ -56,6 +56,7 @@ func command(path, output, charSet string, width uint, inverted, read bool) {
 		if err != nil {
 			fmt.Println(err)
 			os.Exit(1)
+
 		}
 
 		switch ext {
